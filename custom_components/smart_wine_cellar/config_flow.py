@@ -1,15 +1,12 @@
 """Config flow for Smart Wine Cellar integration.
 
-Step 1 (user): Enter API token and sync interval.
-              Validates credentials and fetches the user's SWC locations.
+Step 1 (user / init): Credentials + sync interval. Validates the token and
+                       fetches the SWC locations for the account.
 
-Step 2 (sensor_mapping): For each SWC location, select a temperature sensor
-                          and optionally a humidity sensor. One sensor can be
-                          mapped to multiple locations (e.g. two racks sharing
-                          one thermometer).
-
-The OptionsFlow reuses the same sensor_mapping step and lets users update
-their sensor assignments and sync interval after initial setup.
+Step 2 (sensor_mapping): All locations shown on a single page. Each location
+                          gets a temperature selector and an optional humidity
+                          selector, pre-filled with existing assignments when
+                          reconfiguring via the "Configure" button.
 """
 
 import hashlib
@@ -34,9 +31,13 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Maximum number of locations supported in the single-page mapping form.
+# The translation file has entries for indices 0–(MAX_LOCATIONS-1).
+MAX_LOCATIONS = 8
+
 
 # ------------------------------------------------------------------
-# Shared helper — used by both ConfigFlow and OptionsFlow
+# Shared helpers
 # ------------------------------------------------------------------
 
 async def _fetch_locations(hass: HomeAssistant, api_token: str):
@@ -82,32 +83,60 @@ async def _fetch_locations(hass: HomeAssistant, api_token: str):
         return [], "unknown"
 
 
-def _sensor_mapping_schema(default_temp=None, default_hum=None) -> vol.Schema:
-    """Return a sensor mapping schema with optional pre-filled defaults."""
-    return vol.Schema(
-        {
-            vol.Optional(
-                "temperature_sensor",
-                description={"suggested_value": default_temp},
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="sensor", device_class="temperature"
-                )
-            ),
-            vol.Optional(
-                "humidity_sensor",
-                description={"suggested_value": default_hum},
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="sensor", device_class="humidity"
-                )
-            ),
-        }
-    )
+def _mapping_schema(
+    locations: list[str],
+    existing: list[dict],
+) -> vol.Schema:
+    """Build a single-page schema with one temp+hum pair per location.
+
+    Field names are temp_0/hum_0, temp_1/hum_1 … so the translation file
+    can label and describe each pair independently. Existing sensor
+    assignments are pre-filled via suggested_value.
+    """
+    fields: dict = {}
+    for i, location in enumerate(locations):
+        current = next(
+            (m for m in existing if m["swc_location"] == location), {}
+        )
+        fields[vol.Optional(
+            f"temp_{i}",
+            description={"suggested_value": current.get("temp_entity_id")},
+        )] = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
+        )
+        fields[vol.Optional(
+            f"hum_{i}",
+            description={"suggested_value": current.get("humidity_entity_id")},
+        )] = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="sensor", device_class="humidity")
+        )
+    return vol.Schema(fields)
+
+
+def _parse_mappings(user_input: dict, locations: list[str]) -> list[dict]:
+    """Reconstruct the sensor mapping list from the flat indexed form fields."""
+    mappings = []
+    for i, location in enumerate(locations):
+        temp = user_input.get(f"temp_{i}")
+        hum = user_input.get(f"hum_{i}") or None
+        if temp:
+            mappings.append(
+                {
+                    "swc_location": location,
+                    "temp_entity_id": temp,
+                    "humidity_entity_id": hum,
+                }
+            )
+    return mappings
+
+
+def _location_placeholders(locations: list[str]) -> dict:
+    """Return {loc_0: 'Cellar', loc_1: 'Cellar - Right', …} for form labels."""
+    return {f"loc_{i}": loc for i, loc in enumerate(locations)}
 
 
 # ------------------------------------------------------------------
-# Config flow (initial setup)
+# Config flow (initial setup — 2 steps)
 # ------------------------------------------------------------------
 
 class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -119,8 +148,6 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._api_token: str = ""
         self._scan_interval: int = DEFAULT_SCAN_INTERVAL
         self._locations: list[str] = []
-        self._location_index: int = 0
-        self._mappings: list[dict] = []
 
     @staticmethod
     @config_entries.callback
@@ -129,7 +156,7 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> "SmartWineCellarOptionsFlow":
         return SmartWineCellarOptionsFlow()
 
-    # Step 1: Credentials
+    # Step 1: token + interval
 
     async def async_step_user(self, user_input=None):
         errors = {}
@@ -138,24 +165,20 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             api_token = user_input[CONF_API_TOKEN]
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-            # Prevent duplicate entries for the same account
             token_hash = hashlib.sha256(api_token.encode()).hexdigest()[:16]
             await self.async_set_unique_id(token_hash)
             self._abort_if_unique_id_configured()
 
             locations, error = await _fetch_locations(self.hass, api_token)
-
             if error:
                 errors["base"] = error
             else:
                 self._api_token = api_token
                 self._scan_interval = scan_interval
                 self._locations = locations
-                self._location_index = 0
-                self._mappings = []
 
                 if not locations:
-                    return self._create_entry()
+                    return self._create_entry([])
 
                 return await self.async_step_sensor_mapping()
 
@@ -176,60 +199,38 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    # Step 2: Sensor mapping (one location at a time)
+    # Step 2: all sensor mappings on one page
 
     async def async_step_sensor_mapping(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            temp_entity = user_input.get("temperature_sensor")
-            hum_entity = user_input.get("humidity_sensor") or None
-
-            if temp_entity:
-                self._mappings.append(
-                    {
-                        "swc_location": self._locations[self._location_index],
-                        "temp_entity_id": temp_entity,
-                        "humidity_entity_id": hum_entity,
-                    }
-                )
-
-            self._location_index += 1
-
-            if self._location_index < len(self._locations):
-                return await self.async_step_sensor_mapping()
-
-            if not self._mappings:
-                self._location_index = 0
+            mappings = _parse_mappings(user_input, self._locations)
+            if not mappings:
                 errors["base"] = "no_mappings"
             else:
-                return self._create_entry()
-
-        current_location = self._locations[self._location_index]
+                return self._create_entry(mappings)
 
         return self.async_show_form(
             step_id="sensor_mapping",
-            data_schema=_sensor_mapping_schema(),
-            description_placeholders={
-                "location": current_location,
-                "step": f"{self._location_index + 1}/{len(self._locations)}",
-            },
+            data_schema=_mapping_schema(self._locations, []),
+            description_placeholders=_location_placeholders(self._locations),
             errors=errors,
         )
 
-    def _create_entry(self):
+    def _create_entry(self, mappings: list[dict]):
         return self.async_create_entry(
             title="Smart Wine Cellar",
             data={
                 CONF_API_TOKEN: self._api_token,
-                CONF_SENSOR_MAPPINGS: self._mappings,
+                CONF_SENSOR_MAPPINGS: mappings,
                 CONF_SCAN_INTERVAL: self._scan_interval,
             },
         )
 
 
 # ------------------------------------------------------------------
-# Options flow (reconfiguration via the "Configure" button)
+# Options flow (reconfiguration via the "Configure" button — 2 steps)
 # ------------------------------------------------------------------
 
 class SmartWineCellarOptionsFlow(config_entries.OptionsFlow):
@@ -238,11 +239,9 @@ class SmartWineCellarOptionsFlow(config_entries.OptionsFlow):
     def __init__(self) -> None:
         self._scan_interval: int = DEFAULT_SCAN_INTERVAL
         self._locations: list[str] = []
-        self._location_index: int = 0
-        self._mappings: list[dict] = []
         self._existing_mappings: list[dict] = []
 
-    # Step 1: Sync interval
+    # Step 1: sync interval
 
     async def async_step_init(self, user_input=None):
         errors = {}
@@ -255,23 +254,18 @@ class SmartWineCellarOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             self._scan_interval = user_input[CONF_SCAN_INTERVAL]
 
-            # Fetch current locations so we can re-map sensors
-            api_token = self.config_entry.data[CONF_API_TOKEN]
             self._existing_mappings = self.config_entry.options.get(
                 CONF_SENSOR_MAPPINGS,
                 self.config_entry.data.get(CONF_SENSOR_MAPPINGS, []),
             )
 
+            api_token = self.config_entry.data[CONF_API_TOKEN]
             locations, error = await _fetch_locations(self.hass, api_token)
             if error:
                 errors["base"] = error
             else:
                 self._locations = locations
-                self._location_index = 0
-                self._mappings = []
-
                 if not locations:
-                    # No locations on the account — save interval and exit
                     return self.async_create_entry(
                         title="",
                         data={
@@ -279,7 +273,6 @@ class SmartWineCellarOptionsFlow(config_entries.OptionsFlow):
                             CONF_SENSOR_MAPPINGS: self._existing_mappings,
                         },
                     )
-
                 return await self.async_step_sensor_mapping()
 
         return self.async_show_form(
@@ -296,58 +289,27 @@ class SmartWineCellarOptionsFlow(config_entries.OptionsFlow):
             errors=errors,
         )
 
-    # Step 2: Sensor mapping (pre-filled with current assignments)
+    # Step 2: all sensor mappings on one page (pre-filled)
 
     async def async_step_sensor_mapping(self, user_input=None):
         errors = {}
 
         if user_input is not None:
-            temp_entity = user_input.get("temperature_sensor")
-            hum_entity = user_input.get("humidity_sensor") or None
-
-            if temp_entity:
-                self._mappings.append(
-                    {
-                        "swc_location": self._locations[self._location_index],
-                        "temp_entity_id": temp_entity,
-                        "humidity_entity_id": hum_entity,
-                    }
-                )
-
-            self._location_index += 1
-
-            if self._location_index < len(self._locations):
-                return await self.async_step_sensor_mapping()
-
-            if not self._mappings:
-                self._location_index = 0
+            mappings = _parse_mappings(user_input, self._locations)
+            if not mappings:
                 errors["base"] = "no_mappings"
             else:
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_SCAN_INTERVAL: self._scan_interval,
-                        CONF_SENSOR_MAPPINGS: self._mappings,
+                        CONF_SENSOR_MAPPINGS: mappings,
                     },
                 )
 
-        current_location = self._locations[self._location_index]
-
-        # Pre-fill with whatever was saved for this location previously
-        existing = next(
-            (m for m in self._existing_mappings if m["swc_location"] == current_location),
-            {},
-        )
-
         return self.async_show_form(
             step_id="sensor_mapping",
-            data_schema=_sensor_mapping_schema(
-                default_temp=existing.get("temp_entity_id"),
-                default_hum=existing.get("humidity_entity_id"),
-            ),
-            description_placeholders={
-                "location": current_location,
-                "step": f"{self._location_index + 1}/{len(self._locations)}",
-            },
+            data_schema=_mapping_schema(self._locations, self._existing_mappings),
+            description_placeholders=_location_placeholders(self._locations),
             errors=errors,
         )

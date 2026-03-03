@@ -85,7 +85,7 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
                 continue
 
             try:
-                temp_float = float(temp_state.state)
+                temp_float = round(float(temp_state.state), 1)
             except (ValueError, TypeError):
                 _LOGGER.error(
                     "Invalid temperature value '%s' from %s",
@@ -96,7 +96,7 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
 
             hum_state = entity_states.get(hum_entity) if hum_entity else None
             try:
-                hum_float = float(hum_state.state) if hum_state is not None else 0.0
+                hum_float = round(float(hum_state.state), 1) if hum_state is not None else 0.0
             except (ValueError, TypeError):
                 hum_float = 0.0
 

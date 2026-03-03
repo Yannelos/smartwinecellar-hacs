@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to Smart Wine Cellar",
-        "description": "Enter your Smart Wine Cellar API token. You can find it in **Settings → API Tokens** inside the app.",
+        "description": "Enter your Smart Wine Cellar API token. You can generate one at [smartwinecellar.xyz/settings#/api](https://smartwinecellar.xyz/settings#/api).",
         "data": {
           "api_token": "API Token",
           "scan_interval": "Sync interval (minutes)"
@@ -14,11 +14,25 @@
         }
       },
       "sensor_mapping": {
-        "title": "Map sensors — {location} ({step})",
-        "description": "Select which Home Assistant sensors to use for **{location}**. Leave blank to skip this location. The same sensor can be used for multiple locations (e.g. two racks sharing one thermometer).",
+        "title": "Map your sensors",
+        "description": "Select a Home Assistant temperature sensor (and optionally a humidity sensor) for each Smart Wine Cellar location. Leave a location blank to skip it.",
         "data": {
-          "temperature_sensor": "Temperature sensor",
-          "humidity_sensor": "Humidity sensor (optional)"
+          "temp_0": "Temperature — {loc_0}",
+          "hum_0": "Humidity — {loc_0} (optional)",
+          "temp_1": "Temperature — {loc_1}",
+          "hum_1": "Humidity — {loc_1} (optional)",
+          "temp_2": "Temperature — {loc_2}",
+          "hum_2": "Humidity — {loc_2} (optional)",
+          "temp_3": "Temperature — {loc_3}",
+          "hum_3": "Humidity — {loc_3} (optional)",
+          "temp_4": "Temperature — {loc_4}",
+          "hum_4": "Humidity — {loc_4} (optional)",
+          "temp_5": "Temperature — {loc_5}",
+          "hum_5": "Humidity — {loc_5} (optional)",
+          "temp_6": "Temperature — {loc_6}",
+          "hum_6": "Humidity — {loc_6} (optional)",
+          "temp_7": "Temperature — {loc_7}",
+          "hum_7": "Humidity — {loc_7} (optional)"
         }
       }
     },
@@ -37,7 +51,7 @@
     "step": {
       "init": {
         "title": "Smart Wine Cellar settings",
-        "description": "Update the sync interval. The next step lets you re-assign your sensors.",
+        "description": "Update the sync interval, then reassign your sensors on the next screen.",
         "data": {
           "scan_interval": "Sync interval (minutes)"
         },
@@ -46,11 +60,25 @@
         }
       },
       "sensor_mapping": {
-        "title": "Re-map sensors — {location} ({step})",
-        "description": "Select which Home Assistant sensors to use for **{location}**. Leave blank to skip this location. Existing selections are pre-filled.",
+        "title": "Re-map your sensors",
+        "description": "Update the Home Assistant sensors for each Smart Wine Cellar location. Your current selections are pre-filled.",
         "data": {
-          "temperature_sensor": "Temperature sensor",
-          "humidity_sensor": "Humidity sensor (optional)"
+          "temp_0": "Temperature — {loc_0}",
+          "hum_0": "Humidity — {loc_0} (optional)",
+          "temp_1": "Temperature — {loc_1}",
+          "hum_1": "Humidity — {loc_1} (optional)",
+          "temp_2": "Temperature — {loc_2}",
+          "hum_2": "Humidity — {loc_2} (optional)",
+          "temp_3": "Temperature — {loc_3}",
+          "hum_3": "Humidity — {loc_3} (optional)",
+          "temp_4": "Temperature — {loc_4}",
+          "hum_4": "Humidity — {loc_4} (optional)",
+          "temp_5": "Temperature — {loc_5}",
+          "hum_5": "Humidity — {loc_5} (optional)",
+          "temp_6": "Temperature — {loc_6}",
+          "hum_6": "Humidity — {loc_6} (optional)",
+          "temp_7": "Temperature — {loc_7}",
+          "hum_7": "Humidity — {loc_7} (optional)"
         }
       }
     },

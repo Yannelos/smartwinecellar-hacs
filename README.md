@@ -26,7 +26,7 @@ A [HACS](https://hacs.xyz/) custom integration that connects Home Assistant to t
 - Home Assistant **2023.6.0** or later
 - An active [Smart Wine Cellar](https://smartwinecellar.xyz) PRO account with at least one configured location
 - At least one temperature sensor in Home Assistant (humidity is optional)
-- A Smart Wine Cellar API token (generated in the app under **Settings → API Tokens**)
+- A Smart Wine Cellar API token (generated in the app under **[Your settings → API Tokens](https://smartwinecellar.xyz/settings#/api)**)
 
 ---
 
@@ -57,10 +57,21 @@ After installation (HACS or manual), configure the integration in Home Assistant
 1. Go to **Settings** (bottom-left cog icon) → **Devices & Services**.
 2. Click **+ Add Integration** (bottom-right corner).
 3. Search for **Smart Wine Cellar** and select it.
-4. Enter your **API Token** (found in the Smart Wine Cellar app under **Settings → API Tokens**).
+4. Enter your **API Token** — get it from [smartwinecellar.xyz/settings#/api](https://smartwinecellar.xyz/settings#/api).
 5. Set the **sync interval** in minutes (5–60, default 15).
 6. For each configured location in your Smart Wine Cellar account, map it to a Home Assistant **temperature sensor** (and optionally a **humidity sensor**).
 7. Click **Finish** — the integration is now active.
+
+---
+
+## Changing sensors or sync interval
+
+To update your sensor assignments or sync interval after initial setup:
+
+1. Go to **Settings → Devices & Services**.
+2. Find the **Smart Wine Cellar** card and click **Configure**.
+3. Adjust the **sync interval**, then step through each location and pick new sensors. Your current sensors are pre-filled so you only need to change what you want.
+4. Click **Submit** — the integration reloads automatically with the new settings.
 
 ---
 
