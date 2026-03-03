@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Smart Wine Cellar",
+        "description": "Enter your Smart Wine Cellar API credentials. You can find your API token in **Settings → API Tokens** inside the app.",
+        "data": {
+          "api_url": "Smart Wine Cellar URL",
+          "api_token": "API Token",
+          "scan_interval": "Sync interval (minutes)"
+        },
+        "data_description": {
+          "api_url": "e.g. https://smartwinecellar.xyz",
+          "api_token": "Your personal API token from the app settings",
+          "scan_interval": "How often to push sensor readings (5–60 minutes)"
+        }
+      },
+      "sensor_mapping": {
+        "title": "Map sensors — {location} ({step})",
+        "description": "Select which Home Assistant sensors to use for **{location}**. Leave blank to skip this location. The same sensor can be used for multiple locations (e.g. two racks sharing one thermometer).",
+        "data": {
+          "temperature_sensor": "Temperature sensor",
+          "humidity_sensor": "Humidity sensor (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to reach Smart Wine Cellar. Check the URL and your network.",
+      "invalid_auth": "Invalid API token.",
+      "subscription_required": "Your Smart Wine Cellar account does not have an active subscription.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "Smart Wine Cellar is already configured."
+    }
+  }
+}

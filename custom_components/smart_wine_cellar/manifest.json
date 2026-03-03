@@ -1,0 +1,11 @@
+{
+  "domain": "smart_wine_cellar",
+  "name": "Smart Wine Cellar",
+  "version": "1.0.0",
+  "documentation": "https://github.com/YOUR_USERNAME/smart-wine-cellar-hacs",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@YOUR_USERNAME"],
+  "iot_class": "cloud_push",
+  "config_flow": true
+}
