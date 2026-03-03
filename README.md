@@ -6,6 +6,8 @@
 
 # Smart Wine Cellar — Home Assistant Integration
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Yannelos&repository=smartwinecellar-hacs&category=Integration)
+
 A [HACS](https://hacs.xyz/) custom integration that connects Home Assistant to the [Smart Wine Cellar](https://smartwinecellar.xyz) cloud service. It reads temperature and humidity sensors from your Home Assistant instance and periodically pushes readings to the Smart Wine Cellar API, keeping your cellar conditions in sync.
 
 ---
