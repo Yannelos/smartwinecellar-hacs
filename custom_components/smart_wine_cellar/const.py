@@ -6,4 +6,4 @@ CONF_API_TOKEN = "api_token"
 CONF_SENSOR_MAPPINGS = "sensor_mappings"
 CONF_SCAN_INTERVAL = "scan_interval"
 
-DEFAULT_SCAN_INTERVAL = 15  # minutes
+DEFAULT_SCAN_INTERVAL = 60  # minutes
