@@ -3,14 +3,12 @@
     "step": {
       "user": {
         "title": "Connect to Smart Wine Cellar",
-        "description": "Enter your Smart Wine Cellar API credentials. You can find your API token in **Settings → API Tokens** inside the app.",
+        "description": "Enter your Smart Wine Cellar API token. You can find it in **Settings → API Tokens** inside the app.",
         "data": {
-          "api_url": "Smart Wine Cellar URL",
           "api_token": "API Token",
           "scan_interval": "Sync interval (minutes)"
         },
         "data_description": {
-          "api_url": "e.g. https://smartwinecellar.xyz",
           "api_token": "Your personal API token from the app settings",
           "scan_interval": "How often to push sensor readings (5–60 minutes)"
         }
@@ -25,15 +23,41 @@
       }
     },
     "error": {
-      "cannot_connect": "Unable to reach Smart Wine Cellar. Check the URL and your network.",
+      "cannot_connect": "Unable to reach Smart Wine Cellar. Check your network connection.",
       "invalid_auth": "Invalid API token.",
-      "invalid_url": "The URL must use http:// or https:// and cannot point to a local or loopback address.",
       "no_mappings": "No sensors were mapped. Please assign at least one temperature sensor.",
       "subscription_required": "Your Smart Wine Cellar account does not have an active subscription.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
       "already_configured": "Smart Wine Cellar is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Wine Cellar settings",
+        "description": "Update the sync interval. The next step lets you re-assign your sensors.",
+        "data": {
+          "scan_interval": "Sync interval (minutes)"
+        },
+        "data_description": {
+          "scan_interval": "How often to push sensor readings (5–60 minutes)"
+        }
+      },
+      "sensor_mapping": {
+        "title": "Re-map sensors — {location} ({step})",
+        "description": "Select which Home Assistant sensors to use for **{location}**. Leave blank to skip this location. Existing selections are pre-filled.",
+        "data": {
+          "temperature_sensor": "Temperature sensor",
+          "humidity_sensor": "Humidity sensor (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to reach Smart Wine Cellar. Check your network connection.",
+      "no_mappings": "No sensors were mapped. Please assign at least one temperature sensor.",
+      "unknown": "An unexpected error occurred."
     }
   }
 }

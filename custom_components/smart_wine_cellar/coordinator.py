@@ -10,8 +10,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    API_BASE_URL,
     CONF_API_TOKEN,
-    CONF_API_URL,
     CONF_SCAN_INTERVAL,
     CONF_SENSOR_MAPPINGS,
     DEFAULT_SCAN_INTERVAL,
@@ -28,9 +28,9 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
     """Periodically reads HA sensors and pushes readings to Smart Wine Cellar."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        config = entry.data
+        # Options (set via the "Configure" button) override the original data
+        config = {**entry.data, **entry.options}
         self.entry_id = entry.entry_id
-        self.api_url = config[CONF_API_URL].rstrip("/")
         self.api_token = config[CONF_API_TOKEN]
         self.sensor_mappings = config[CONF_SENSOR_MAPPINGS]
         # Guard against a corrupted/zero interval reaching timedelta
@@ -113,7 +113,7 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
 
             try:
                 async with session.post(
-                    f"{self.api_url}/api/thermometer/save",
+                    f"{API_BASE_URL}/api/thermometer/save",
                     json=payload,
                     headers={"Authorization": f"Bearer {self.api_token}"},
                     timeout=aiohttp.ClientTimeout(total=10),

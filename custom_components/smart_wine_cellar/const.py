@@ -1,6 +1,7 @@
 DOMAIN = "smart_wine_cellar"
 
-CONF_API_URL = "api_url"
+API_BASE_URL = "https://smartwinecellar.xyz"
+
 CONF_API_TOKEN = "api_token"
 CONF_SENSOR_MAPPINGS = "sensor_mappings"
 CONF_SCAN_INTERVAL = "scan_interval"

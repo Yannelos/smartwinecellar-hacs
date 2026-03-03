@@ -16,7 +16,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import API_BASE_URL, DOMAIN
 from .coordinator import SmartWineCellarCoordinator
 
 
@@ -54,7 +54,7 @@ class SmartWineCellarSensor(CoordinatorEntity[SmartWineCellarCoordinator], Senso
             identifiers={(DOMAIN, self.coordinator.entry_id)},
             name="Smart Wine Cellar",
             manufacturer="Smart Wine Cellar",
-            configuration_url=self.coordinator.api_url,
+            configuration_url=API_BASE_URL,
         )
 
     @property

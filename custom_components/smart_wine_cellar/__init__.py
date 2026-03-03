@@ -29,6 +29,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Reload the entry whenever the user saves new options so the coordinator
+    # picks up the updated sensor mappings and scan interval.
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+
     _LOGGER.info(
         "Smart Wine Cellar integration loaded — %d location(s) configured",
         len(coordinator.sensor_mappings),
@@ -42,3 +46,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return True
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
