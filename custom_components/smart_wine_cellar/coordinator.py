@@ -1,6 +1,9 @@
 from datetime import timedelta
 import logging
 
+import aiohttp
+
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -17,15 +20,21 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Accepted unit strings that indicate Fahrenheit scale
+_FAHRENHEIT_UNITS: frozenset[str] = frozenset({"°F", "F"})
+
 
 class SmartWineCellarCoordinator(DataUpdateCoordinator):
     """Periodically reads HA sensors and pushes readings to Smart Wine Cellar."""
 
-    def __init__(self, hass: HomeAssistant, config: dict) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        config = entry.data
+        self.entry_id = entry.entry_id
         self.api_url = config[CONF_API_URL].rstrip("/")
         self.api_token = config[CONF_API_TOKEN]
         self.sensor_mappings = config[CONF_SENSOR_MAPPINGS]
-        scan_interval = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        # Guard against a corrupted/zero interval reaching timedelta
+        scan_interval = max(5, config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
 
         super().__init__(
             hass,
@@ -34,20 +43,26 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=scan_interval),
         )
 
+    @property
+    def locations(self) -> list[str]:
+        """Return all configured SWC location names."""
+        return [m["swc_location"] for m in self.sensor_mappings]
+
     async def _async_update_data(self) -> dict:
         """Read sensors and push each mapped location to the SWC API."""
         session = async_get_clientsession(self.hass)
         results = {}
 
-        # Read all unique sensor states up front to avoid redundant lookups
-        entity_states: dict[str, str | None] = {}
+        # Read all unique sensor State objects up front — one lookup per entity,
+        # avoiding a second hass.states.get() call later for attributes.
+        entity_states: dict[str, object] = {}
         for mapping in self.sensor_mappings:
             for key in ("temp_entity_id", "humidity_entity_id"):
                 entity_id = mapping.get(key)
                 if entity_id and entity_id not in entity_states:
                     state = self.hass.states.get(entity_id)
                     entity_states[entity_id] = (
-                        state.state
+                        state
                         if state and state.state not in ("unavailable", "unknown", "none")
                         else None
                     )
@@ -60,8 +75,8 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
             if not temp_entity:
                 continue
 
-            temp_val = entity_states.get(temp_entity)
-            if temp_val is None:
+            temp_state = entity_states.get(temp_entity)
+            if temp_state is None:
                 _LOGGER.warning(
                     "Temperature sensor %s is unavailable, skipping location '%s'",
                     temp_entity,
@@ -70,23 +85,24 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
                 continue
 
             try:
-                temp_float = float(temp_val)
+                temp_float = float(temp_state.state)
             except (ValueError, TypeError):
                 _LOGGER.error(
-                    "Invalid temperature value '%s' from %s", temp_val, temp_entity
+                    "Invalid temperature value '%s' from %s",
+                    temp_state.state,
+                    temp_entity,
                 )
                 continue
 
-            hum_val = entity_states.get(hum_entity) if hum_entity else None
+            hum_state = entity_states.get(hum_entity) if hum_entity else None
             try:
-                hum_float = float(hum_val) if hum_val is not None else 0.0
+                hum_float = float(hum_state.state) if hum_state is not None else 0.0
             except (ValueError, TypeError):
                 hum_float = 0.0
 
-            # Detect scale from the sensor's unit of measurement
-            temp_state = self.hass.states.get(temp_entity)
-            unit = temp_state.attributes.get("unit_of_measurement", "°C") if temp_state else "°C"
-            scale = "F" if "F" in unit else "C"
+            # Unit is read from the already-fetched State object — no second lookup
+            unit = temp_state.attributes.get("unit_of_measurement", "°C")
+            scale = "F" if unit.strip() in _FAHRENHEIT_UNITS else "C"
 
             payload = {
                 "temperature": temp_float,
@@ -100,7 +116,7 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
                     f"{self.api_url}/api/thermometer/save",
                     json=payload,
                     headers={"Authorization": f"Bearer {self.api_token}"},
-                    timeout=10,
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     if resp.status == 403:
                         raise ConfigEntryAuthFailed(
@@ -127,9 +143,13 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
                         )
             except ConfigEntryAuthFailed:
                 raise
+            except aiohttp.ClientError as err:
+                raise UpdateFailed(
+                    f"Network error communicating with Smart Wine Cellar API: {err}"
+                ) from err
             except Exception as err:
                 raise UpdateFailed(
-                    f"Error communicating with Smart Wine Cellar API: {err}"
+                    f"Unexpected error communicating with Smart Wine Cellar API: {err}"
                 ) from err
 
         return results

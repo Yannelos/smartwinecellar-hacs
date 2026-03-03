@@ -27,6 +27,8 @@
     "error": {
       "cannot_connect": "Unable to reach Smart Wine Cellar. Check the URL and your network.",
       "invalid_auth": "Invalid API token.",
+      "invalid_url": "The URL must use http:// or https:// and cannot point to a local or loopback address.",
+      "no_mappings": "No sensors were mapped. Please assign at least one temperature sensor.",
       "subscription_required": "Your Smart Wine Cellar account does not have an active subscription.",
       "unknown": "An unexpected error occurred."
     },

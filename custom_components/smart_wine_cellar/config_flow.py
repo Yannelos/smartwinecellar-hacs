@@ -9,13 +9,17 @@ Step 2 (sensor_mapping): For each SWC location, select a temperature sensor
                           one thermometer).
 """
 
+import hashlib
+import ipaddress
 import logging
+from urllib.parse import urlparse
 
 import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_API_TOKEN,
@@ -27,6 +31,39 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _validate_url(url: str) -> str | None:
+    """Return an error key if the URL is unsafe or malformed, else None.
+
+    Rejects non-http(s) schemes and loopback / link-local hosts to prevent
+    the config flow from being used as an SSRF proxy.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:  # noqa: BLE001
+        return "invalid_url"
+
+    if parsed.scheme not in ("http", "https"):
+        return "invalid_url"
+
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return "invalid_url"
+
+    # Block string-based loopback names
+    if host in ("localhost", "localhost."):
+        return "invalid_url"
+
+    # Block loopback and link-local IP addresses
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_loopback or addr.is_link_local or addr.is_unspecified:
+            return "invalid_url"
+    except ValueError:
+        pass  # Not an IP literal — hostname is fine
+
+    return None
 
 
 class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -54,23 +91,32 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             api_token = user_input[CONF_API_TOKEN]
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-            locations, error = await self._fetch_locations(api_url, api_token)
-
-            if error:
-                errors["base"] = error
+            url_error = _validate_url(api_url)
+            if url_error:
+                errors["base"] = url_error
             else:
-                self._api_url = api_url
-                self._api_token = api_token
-                self._scan_interval = scan_interval
-                self._locations = locations
-                self._location_index = 0
-                self._mappings = []
+                # Prevent duplicate entries for the same account
+                token_hash = hashlib.sha256(api_token.encode()).hexdigest()[:16]
+                await self.async_set_unique_id(f"{api_url}_{token_hash}")
+                self._abort_if_unique_id_configured()
 
-                if not locations:
-                    # No wine locations configured in SWC yet — still allow setup
-                    return self._create_entry()
+                locations, error = await self._fetch_locations(api_url, api_token)
 
-                return await self.async_step_sensor_mapping()
+                if error:
+                    errors["base"] = error
+                else:
+                    self._api_url = api_url
+                    self._api_token = api_token
+                    self._scan_interval = scan_interval
+                    self._locations = locations
+                    self._location_index = 0
+                    self._mappings = []
+
+                    if not locations:
+                        # No wine locations configured in SWC yet — still allow setup
+                        return self._create_entry()
+
+                    return await self.async_step_sensor_mapping()
 
         return self.async_show_form(
             step_id="user",
@@ -97,6 +143,8 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
 
     async def async_step_sensor_mapping(self, user_input=None):
+        errors = {}
+
         if user_input is not None:
             temp_entity = user_input.get("temperature_sensor")
             hum_entity = user_input.get("humidity_sensor") or None
@@ -116,7 +164,13 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # More locations to configure
                 return await self.async_step_sensor_mapping()
 
-            return self._create_entry()
+            # All locations processed — require at least one mapping
+            if not self._mappings:
+                # Reset index so the user can try again from the first location
+                self._location_index = 0
+                errors["base"] = "no_mappings"
+            else:
+                return self._create_entry()
 
         current_location = self._locations[self._location_index]
         total = len(self._locations)
@@ -142,6 +196,7 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "location": current_location,
                 "step": step_label,
             },
+            errors=errors,
         )
 
     # ------------------------------------------------------------------
@@ -159,30 +214,42 @@ class SmartWineCellarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    @staticmethod
-    async def _fetch_locations(api_url: str, api_token: str):
-        """Call /api/thermometer/setup and return (locations, error_key)."""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{api_url}/api/thermometer/setup",
-                    headers={"Authorization": f"Bearer {api_token}"},
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    if resp.status == 401:
-                        return [], "invalid_auth"
-                    if resp.status == 403:
-                        return [], "subscription_required"
-                    if resp.status != 200:
-                        return [], "cannot_connect"
+    async def _fetch_locations(self, api_url: str, api_token: str):
+        """Call /api/thermometer/setup and return (locations, error_key).
 
+        Uses the shared HA aiohttp session so that custom CA bundles and
+        HA-level SSL settings are respected.
+        """
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.get(
+                f"{api_url}/api/thermometer/setup",
+                headers={"Authorization": f"Bearer {api_token}"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 401:
+                    return [], "invalid_auth"
+                if resp.status == 403:
+                    return [], "subscription_required"
+                if resp.status != 200:
+                    return [], "cannot_connect"
+
+                try:
                     data = await resp.json()
-                    locations = [
-                        loc["location"]
-                        for loc in data.get("locations", [])
-                        if loc.get("location")
-                    ]
-                    return locations, None
+                except (aiohttp.ContentTypeError, ValueError):
+                    _LOGGER.error("SWC API returned a non-JSON response during setup")
+                    return [], "cannot_connect"
+
+                if not isinstance(data, dict):
+                    _LOGGER.error("SWC API setup response has unexpected shape: %r", data)
+                    return [], "cannot_connect"
+
+                locations = [
+                    loc["location"]
+                    for loc in data.get("locations", [])
+                    if isinstance(loc, dict) and loc.get("location")
+                ]
+                return locations, None
 
         except aiohttp.ClientError:
             return [], "cannot_connect"
