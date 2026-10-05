@@ -94,11 +94,13 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
                 )
                 continue
 
+            # No humidity entity mapped, or it is unavailable: send None so the
+            # backend stores "no humidity" instead of 0% (which reads as too dry).
             hum_state = entity_states.get(hum_entity) if hum_entity else None
             try:
-                hum_float = round(float(hum_state.state), 1) if hum_state is not None else 0.0
+                hum_float = round(float(hum_state.state), 1) if hum_state is not None else None
             except (ValueError, TypeError):
-                hum_float = 0.0
+                hum_float = None
 
             # Unit is read from the already-fetched State object — no second lookup
             unit = temp_state.attributes.get("unit_of_measurement", "°C")
@@ -129,10 +131,10 @@ class SmartWineCellarCoordinator(DataUpdateCoordinator):
                             "scale": scale,
                         }
                         _LOGGER.debug(
-                            "Pushed %.1f°%s / %.1f%% to SWC location '%s'",
+                            "Pushed %.1f°%s / %s to SWC location '%s'",
                             temp_float,
                             scale,
-                            hum_float,
+                            "no humidity" if hum_float is None else f"{hum_float:.1f}%",
                             swc_location,
                         )
                     else:
